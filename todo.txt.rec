@@ -1,0 +1,123 @@
+function createDailyTrigger() {
+  ScriptApp.newTrigger("DuplicateRecTask")
+  .timeBased()
+  .atHour(1)  // Trigger at 1AM based on time zone (1AM vice midnight takes into account DST).
+  .everyDays(1) // Frequency is required if you are using atHour() or nearMinute()
+  .create();
+}
+
+function DuplicateRecTask() {
+  // TZOffset and Archive need to be set:
+  // Set your local time zone offset:  5 for EST, 8 for PST
+  var TZOffset = 5;
+  var backups = 10; //number of backups
+  var fileName = "ToDoJames.txt"; // This file must already exist and be the only file of this name in Google Drive.
+  var archName = "ArchiveToDoJames.txt"; // This file must already exist and be the only file of this name in Google Drive.
+  var folderName = "ToDoTxt";
+  var Today = new Date();
+  Today.setDate(Today.getDate()+1);
+  Today = Today.toISOString();
+  var newtext = "";
+  var archTasks = "";
+
+
+  // read ToDo.txt and parse it into "tasks"
+  var files = DriveApp.getFilesByName(fileName);
+  // We take only the first file among all files with such name.
+  var file = files.next();
+  var text = file.getBlob().getDataAsString("utf8");
+  // Now you have to parse the file.
+  var tasks = text.split(/\r?\n/);
+
+  for (var i = 0; i < tasks.length; i++) {
+    var task = tasks[i];
+      
+    // Only check completed tasks with "r:" in the title.
+    if (task.search("r:")>0 && task.substr(0,2)=="x ") {
+      if (task.substr(2,10).match(/\d\d\d\d-\d\d-\d\d/)) {
+        task = task.replace(task.substr(2,11),"");
+      }
+      var TaskDueStr = task.substr(task.search("due:")+4,10);
+      var RecStr = task.replace(/.*r:(\S*).*/, "$1");
+        var RecInt;
+      
+        // Set interval for next recurrence.
+        var NewDueDate = new Date(TaskDueStr);
+        NewDueDate.setHours(NewDueDate.getHours()+TZOffset);
+        if (!isNaN(parseFloat(RecStr.substring(0,1))) && isFinite(RecStr.substring(0,1))) {
+          RecInt = Number(RecStr.substring (0,2));
+          switch (RecStr.substring(2,3)) {
+            case "d":
+              NewDueDate.setDate(NewDueDate.getDate()+RecInt);
+              break;
+            case "w":
+              NewDueDate.setDate(NewDueDate.getDate()+(RecInt*7));
+              break;
+            case "m":
+              NewDueDate.setMonth(NewDueDate.getMonth() + RecInt);
+              break;
+            case "y":
+              NewDueDate.setFullYear(NewDueDate.getFullYear() + RecInt);
+              break;
+          }
+        }
+        else {
+          RecInt = Number(RecStr.substring (1,3));
+          switch (RecStr.substring (0,1)) {
+            case "w":
+              var AddWeek = (NewDueDate.getDay() < RecInt - 1 ) ? 0:1;
+              NewDueDate.setDate(NewDueDate.getDate() + (7 * AddWeek) - NewDueDate.getDay() + RecInt -1);
+              break;
+          case "m":
+              var AddMonth = (NewDueDate.getDate() < RecInt - 1) ? 0:1;
+              NewDueDate.setMonth(NewDueDate.getMonth()+AddMonth,RecInt);
+              break;
+            case "y":
+              var RecMo = RecInt;
+              var RecDay = Number(RecStr.substring (3,5));
+              var LastDay = new Date(NewDueDate.getFullYear(), NewDueDate.getMonth() + 1, 0);
+              var AddLast = (NewDueDate.getDate() == LastDay.getDate()) ? NewDueDate.getDate():0;
+              var AddYear = ((NewDueDate.getMonth() + 1 >= RecMo) || (NewDueDate.getMonth() + 2 == RecMo && NewDueDate.getDate() < RecDay + AddLast)) ? 1:0;
+              NewDueDate.setFullYear(NewDueDate.getFullYear() + AddYear, RecMo-1, RecDay);
+              break;
+          }
+        }
+      task = task.replace("due:"+TaskDueStr,"due:"+NewDueDate.toISOString().substr(0,10));
+      task = task.replace("x ","");
+    }
+    if (task.substr(0,2)!="x ") {
+      newtext = newtext + task + "\n";
+    }
+    else {
+      archTasks = archTasks + task + "\n";
+    }
+  }
+            
+            // Adjust for DST.
+//            if (dueDate.getTimezoneOffset() < new Date(oldtask.due).getTimezoneOffset()) {
+//              dueDate.setDate(dueDate.getDate()+1);
+//            }
+
+            // Add new task.
+//            var newTask = Tasks.Tasks.insert(newtask, TASK_LIST_ID);
+  
+            // Make old task non-recurring.  Replace "r:" with an "rd:" to indicate it recurred but is excluded for future recurrences.
+//            oldtask.title = oldtask.title.replace("r:", "rd:");
+//            var updatedTask = Tasks.Tasks.update(oldtask, TASK_LIST_ID, TASK_ID);
+//          }
+          // If Archive set to 1, archive all completed tasks to spreadsheet (recurring or not)
+//          if (Archive == 1) {
+//            sheet.appendRow([oldtask.title,oldtask.due,oldtask.completed,oldtask.notes,taskList.title]);
+//            oldtask.deleted = "True";
+//          }
+//          var updatedTask = Tasks.Tasks.update(oldtask, TASK_LIST_ID, TASK_ID);
+
+  // Update ToDo.txt file.  Nothing is saved until all of the tasks are processed correctly.
+  file.setContent(newtext);
+  
+  // Archive Tasks
+  var archFiles = DriveApp.getFilesByName(archName);
+  var archFile = archFiles.next();
+  var combinedContent = archFile.getBlob().getDataAsString() + archTasks;
+  archFile.setContent(combinedContent);
+}
